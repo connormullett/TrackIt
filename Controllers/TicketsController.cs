@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackIt.API.Models;
 using TrackIt.API.Models.TransferObjects;
-using TrackIt.API.Repository;
+using TrackIt.API.Services;
 
 namespace TrackIt.API.Controllers
 {
@@ -15,32 +15,32 @@ namespace TrackIt.API.Controllers
     [ApiController]
     public class TicketsController : ControllerBase
     {
-        private readonly TicketsRepository _repository;
+        private readonly TicketsService _service;
 
         public TicketsController(DataContext context)
         {
-            _repository = new TicketsRepository(context);
+            _service = new TicketsService(context);
         }
 
         // GET: api/Tickets
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TicketDTO>>> GetTickets()
         {
-            var tickets = await _repository.GetTickets();
-            return await tickets.Select(x => TicketToDTO(x)).ToListAsync();
+            var tickets = await _service.GetTickets();
+            return tickets.ToList();
         }
 
         // GET: api/Tickets/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TicketDTO>> GetTicket(long id)
         {
-            var ticket = await _repository.GetTicketById(id);
+            var ticket = await _service.GetTicketById(id);
             if (ticket == null)
             {
                 return NotFound();
             }
 
-            return TicketToDTO(ticket);
+            return ticket;
         }
 
         // PUT: api/Tickets/5
@@ -53,27 +53,8 @@ namespace TrackIt.API.Controllers
                 return BadRequest();
             }
 
-            var ticket = new Ticket
-            {
-                Name = ticketDto.Name,
-                Description = ticketDto.Description,
-                Status = ticketDto.Status,
-            };
-
-            try
-            {
-                var success = await _repository.UpdateTicketById(id, ticket);
-                if (!success)
-                {
-                    return NotFound();
-                }
-
-                return NoContent();
-            }
-            catch (DbUpdateConcurrencyException) when (!TicketExists(id))
-            {
-                return NotFound();
-            }
+            if (await _service.UpdateTicketById(id, ticketDto)) return NoContent();
+            else return NotFound();
         }
 
         // POST: api/Tickets
@@ -81,24 +62,15 @@ namespace TrackIt.API.Controllers
         [HttpPost]
         public async Task<ActionResult<TicketDTO>> PostTicket(TicketDTO ticketDto)
         {
-            var ticket = new Ticket
-            {
-                Name = ticketDto.Name,
-                Description = ticketDto.Description,
-                Status = ticketDto.Status
-            };
-
-            var newTicket = await _repository.CreateTicket(ticket);
-
-            // TODO: Needs tested
-            return CreatedAtAction(nameof(GetTicket), new { id = newTicket.Id }, TicketToDTO(ticket));
+            var newTicket = await _service.CreateTicket(ticketDto);
+            return CreatedAtAction(nameof(GetTicket), new { id = newTicket.Id }, newTicket.ToDto());
         }
 
         // DELETE: api/Tickets/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTicket(long id)
         {
-            if (await _repository.DeleteTicketById(id))
+            if (await _service.DeleteTicketById(id))
             {
                 return NoContent();
             }
@@ -108,16 +80,7 @@ namespace TrackIt.API.Controllers
 
         private bool TicketExists(long id)
         {
-            return _repository.GetTicketById(id) != null;
+            return _service.GetTicketById(id) != null;
         }
-
-        private static TicketDTO TicketToDTO(Ticket ticket) =>
-            new TicketDTO
-            {
-                Id = ticket.Id,
-                Name = ticket.Name,
-                Description = ticket.Description,
-                Status = ticket.Status
-            };
     }
 }
